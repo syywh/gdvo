@@ -1,11 +1,19 @@
-function T = estimate_ds_dense_gradient_Joint(cur,ref_gra_x,ref_gra_y, kf_gra_x, kf_gra_y,cur_gra_x,cur_gra_y,refdepth, kfdepth,curdepth,T, Tkf_r)
-dscale = 0.0002./1.032;
-pcx = 318.6; pcy = 255.3; pfx = 517.3; pfy = 516.5;                
+function T = estimate_ds_dense_gradient_Joint(cur,ref_gra_x,ref_gra_y, kf_gra_x, kf_gra_y,cur_gra_x,cur_gra_y,refdepth, kfdepth,curdepth,T, Tkf_r, initial)
+% dscale = 0.0002./1.032;
+dscale = 1;
+% pcx = 318.6; pcy = 255.3; pfx = 517.3; pfy = 516.5;              
+%  pcx = 6.900000e+02; pcy = 2.486443e+02; pfx = 9.799200e+02; pfy =9.741183e+02;                %kitti 00
+pcx = 6.071928000000e+02; pcy =  1.852157000000e+02; pfx =7.188560000000e+02; pfy =7.188560000000e+02;                %kitti 00
 % pcx = 335.963; pcy = 190.625; pfx = 351.498; pfy = 351.498; 
-s0 = 8;
-near = 0.5;     %保留的点
-far = 4;
-iteration_s = [30 30 ];
+s0 = 16;
+near = 1;     %保留的点
+far = 80;
+if(initial)
+    iteration_s = [10 40 10 ];
+else
+    iteration_s = [10 40 10 5 ];%16 8 4 2
+end
+
 refdepth = dscale*double(refdepth);
 curdepth = dscale*double(curdepth);
 kfdepth = dscale*double(kfdepth);
@@ -14,6 +22,7 @@ kfdepth = dscale*double(kfdepth);
 % cur_gra_x = im2double(cur_gra_x);
 % cur_gra_y = im2double(cur_gra_y);
 weight = 1;
+
 
 %% Process
 s = s0;
@@ -42,20 +51,20 @@ for n = 1:length(iteration_s)
     gkf = gkf(:).';
     
     % feature selection
-    uref = uref(:).'-1;%按着列，再行横着来
+    uref = uref(:).'-1;
     vref = vref(:).'-1;
     ukf = ukf(:).' -1;
     vkf =  vkf(:).'-1;
     
-    zref = refdepthp(:).';
+    zref = refdepthp(:).';%横着取，竖着排，.'后变成横的
     zkf = kfdepthp(:).';
     
     Pref = K\[zref.*uref;zref.*vref;zref];
-    refvalid = Pref(3,:)>near & Pref(3,:)<far & gref>0.5/s;
-    
+    refvalid = Pref(3,:)>near & Pref(3,:)<far & gref>0.8/s;
+
     Pkf = K\[zkf.*ukf;zkf.*vkf;zkf];
-   kfvalid = Pkf(3,:)>near & Pkf(3,:)<far & gkf>0.5/s;
-    
+    kfvalid = Pkf(3,:)>near & Pkf(3,:)<far & gkf>0.8/s;
+
     % jacobian    
     maxiter = iteration_s(n);%每次迭代的次数
     err = zeros(1,maxiter);
@@ -73,7 +82,7 @@ for n = 1:length(iteration_s)
         vNew = round(uvNew(2,:)./uvNew(3,:))+1;
         uu = uNew;  vv = vNew;  uv = uvNew;
         idx = (uNew(:)-1)*size(refdepthp,1)+vNew(:);
-        valid = uvNew(3,:)>0.5 & uvNew(3,:)<4 & uNew <= size(curdepthp,2) & uNew > 0 ...
+        valid = uvNew(3,:)>near & uvNew(3,:)<far & uNew <= size(curdepthp,2) & uNew > 0 ...
             & vNew <= size(curdepthp,1) & vNew > 0 & refvalid;
         validvalid = valid;
 %         render(idx(valid)) = refp(valid);
@@ -84,6 +93,10 @@ for n = 1:length(iteration_s)
         b = zeros(6,1);
         [gdxx,gdxy] = imgradientxy(curp_gra_x);  
         [gdyx,gdyy] = imgradientxy(curp_gra_y);  
+        [refgdxx,refgdxy] = imgradientxy(refp_gra_x);  
+        [refgdyx,refgdyy] = imgradientxy(refp_gra_y);  
+        [kfgdxx,kfgdxy] = imgradientxy(kfp_gra_x);  
+        [kfgdyx,kfgdyy] = imgradientxy(kfp_gra_y);  
 %         [gdxd,gdyd] = imgradientxy(curdepthp);
          
 
@@ -99,6 +112,10 @@ for n = 1:length(iteration_s)
             gdxyPatch = gdxy(vNew(i),uNew(i));
             gdyxPatch = gdyx(vNew(i),uNew(i));
             gdyyPatch = gdyy(vNew(i),uNew(i));
+            refgdxxPatch = refgdxx(vref(i)+1,uref(i)+1);
+            refgdxyPatch = refgdxy(vref(i)+1,uref(i)+1);
+            refgdyxPatch = refgdyx(vref(i)+1,uref(i)+1);
+            refgdyyPatch = refgdyy(vref(i)+1,uref(i)+1);
            
             Vi_x = refPatch_x - curPatch_x;     
             Vi_y = refPatch_y - curPatch_y;
@@ -109,11 +126,13 @@ for n = 1:length(iteration_s)
 
             EiNewT = ENewT(:,i);        
             EiNewRT = ENewRT(:,i);
-            firstDiffx = [gdxxPatch gdxyPatch];
-            firstDiffy = [gdyxPatch gdyyPatch];
+            firstDiffx = [(gdxxPatch+refgdxxPatch)/2 (gdxyPatch+ refgdxyPatch )/2];
+            firstDiffy = [(gdyxPatch+refgdyxPatch)/2 (gdyyPatch+refgdyyPatch)/2];
 %             firstDiffd = [gdxPatchd gdyPatchd];
-            secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
-                                  0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+%             secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
+%                                   0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+            secondDiff = [ fx / EiNewRT(3), 0, -(uNew(i)-1) * EiNewRT(3).^(-1);
+                                  0, fy / EiNewRT(3), -(vNew(i)-1) * EiNewRT(3).^(-1) ];
             EiNewTx = [ 0, -EiNewT(3), EiNewT(2);
                                EiNewT(3), 0, -EiNewT(1);
                                -EiNewT(2), EiNewT(1), 0];
@@ -126,8 +145,12 @@ for n = 1:length(iteration_s)
 
         end
 
-     %% for keyframe image
-       Tkf_c = Tkf_r*T;
+%      %% for keyframe image
+        if initial
+            Tkf_c = Tkf_r;
+        else
+            Tkf_c = Tkf_r*T;
+        end
         Rotate = Tkf_c(1:3,1:3);
         Translate = Tkf_c(1:3,4);
         ENewT = Pkf - repmat(Translate,1,size(Pkf,2));
@@ -136,7 +159,7 @@ for n = 1:length(iteration_s)
         uNew = round(uvNew(1,:)./uvNew(3,:))+1;
         vNew = round(uvNew(2,:)./uvNew(3,:))+1;
         uu = [uu uNew];     vv = [vv vNew];     uv = [uv uvNew];
-        valid = uvNew(3,:)>0.5 & uvNew(3,:)<4 & uNew <= size(curdepthp,2) & uNew > 0 ...
+        valid = uvNew(3,:)>near & uvNew(3,:)<far & uNew <= size(curdepthp,2) & uNew > 0 ...
             & vNew <= size(curdepthp,1) & vNew > 0 & kfvalid;
         validvalid = [validvalid valid];
 %         [gdxx,gdxy] = imgradientxy(curp_gra_x);  
@@ -156,7 +179,11 @@ for n = 1:length(iteration_s)
             gdxyPatch = gdxy(vNew(i),uNew(i));
             gdyxPatch = gdyx(vNew(i),uNew(i));
             gdyyPatch = gdyy(vNew(i),uNew(i));
-           
+            kfgdxxPatch = kfgdxx(vkf(i)+1,ukf(i)+1);
+            kfgdxyPatch = kfgdxy(vkf(i)+1,ukf(i)+1);
+            kfgdyxPatch = kfgdyx(vkf(i)+1,ukf(i)+1);
+            kfgdyyPatch = kfgdyy(vkf(i)+1,ukf(i)+1);
+            
             Vi_x = kfPatch_x - curPatch_x;     
             Vi_y = kfPatch_y - curPatch_y;
 %             Vx = [Vx; Vi_x];
@@ -166,11 +193,13 @@ for n = 1:length(iteration_s)
 
             EiNewT = ENewT(:,i);        
             EiNewRT = ENewRT(:,i);
-            firstDiffx = [gdxxPatch gdxyPatch];
-            firstDiffy = [gdyxPatch gdyyPatch];
+            firstDiffx = [(gdxxPatch+kfgdxxPatch)/2 (gdxyPatch+kfgdxyPatch)/2];
+            firstDiffy = [(gdyxPatch+ kfgdyxPatch)/2 (gdyyPatch+kfgdyyPatch)/2];
 %             firstDiffd = [gdxPatchd gdyPatchd];
-            secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
-                                  0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+%             secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
+%                                   0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+            secondDiff = [ fx / EiNewRT(3), 0, -(uNew(i)-1) * EiNewRT(3).^(-1);
+                                  0, fy / EiNewRT(3), -(vNew(i)-1) * EiNewRT(3).^(-1) ];
             EiNewTx = [ 0, -EiNewT(3), EiNewT(2);
                                EiNewT(3), 0, -EiNewT(1);
                                -EiNewT(2), EiNewT(1), 0];
@@ -187,8 +216,9 @@ for n = 1:length(iteration_s)
         median_v = median(V);
         V_n = V - median_v;
         V_n = V_n./std(V_n);%标准差
-
-        W = diag( g_robust_kernal(V_n, RK).^2 );
+        W = spdiags(g_robust_kernal(V_n, RK).^2, 0, size(J,1),size(J,1));
+        J = sparse(J);
+%         W = diag( g_robust_kernal(V_n, RK).^2 );
         S = (J' * W *J )\( J'*W*V);
 %         S = (H\b).';
         t = S(1 : 3); w = S(4 : 6); 
@@ -207,8 +237,9 @@ for n = 1:length(iteration_s)
         figure(3)
         cm = colormap(hsv);
         imshow(curp);hold on;
-%         scatter(uNew(:,valid),vNew(:,valid),5,cm(round(uvNew(3,valid)./4*size(cm,1)),:),'fill');hold off;
-        scatter(uu(:,validvalid),vv(:,validvalid),5,cm(round(uv(3,validvalid)./4*size(cm,1)),:),'fill');hold off;
+        scatter(uNew(:,valid),vNew(:,valid),5,cm(round(uvNew(3,valid)./far*size(cm,1)),:),'fill');hold off;
+
+        %         scatter(uu(:,validvalid),vv(:,validvalid),5,cm(round(64*rand),:),'fill');hold off;
         drawnow;
     end
     s = s /2;

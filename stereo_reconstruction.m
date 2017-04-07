@@ -1,4 +1,4 @@
-path = '/home/dxq/data/datasets/kitti/2011_09_26/2011_09_26_drive_0001_extract/';
+path = '/home/dxq/data/datasets/kitti/2011_09_26/2011_09_26_drive_0001_ori';
 
 leftImageFile = [path 'image_00/data/0000000000.png'];
 rightImageFile = [path 'image_01/data/0000000000.png'];
@@ -52,7 +52,7 @@ colormap jet
 colorbar
 pointCloud = reconstructScene(disparityMap, stereoParams);
 Z = pointCloud(:, :, 3);
-mask = repmat(Z > 10 & Z < 50, [1, 1, 3]);
+mask = repmat(Z > 2 & Z < 50, [1, 1, 3]);
 J1(~mask) = 0;
 figure
 imshow(J1, 'InitialMagnification', 50);
