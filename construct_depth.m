@@ -11,9 +11,9 @@ function [ depth ] = construct_depth( left, right, stereoParams, baseline_focal 
 % disparityMap = disparity(J1, J2 ,'Method', 'BlockMatching');
 % disparityMap = disparity(J1, J2);
 % disparityMap = disparity(left, right,'Method', 'BlockMatching');
-disparityRange = [0 16];
-disparityMap = disparity(left, right,'BlockSize',5,'DisparityRange',disparityRange, 'DistanceThreshold',100,'UniquenessThreshold',30);
-% disparityMap = disparity(left, right,'BlockSize',5,'DisparityRange',disparityRange);
+disparityRange = [0 96];
+% disparityMap = disparity(left, right,'BlockSize',5,'DisparityRange',disparityRange, 'DistanceThreshold',100,'UniquenessThreshold',30);
+disparityMap = disparity(left, right,'BlockSize',5,'DisparityRange',disparityRange, 'UniquenessThreshold',70,'ContrastThreshold',0.1);
 % figure(3);
 % imshow(disparityMap, [0, 64]);
 

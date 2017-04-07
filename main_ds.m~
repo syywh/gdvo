@@ -85,7 +85,7 @@ for i = 3:11
                 T = estimate_ds_dense_gradient_Joint(cur_left,refgradientx,refgradienty,kf_ref_x, kf_ref_y,curgradientx,curgradienty,refdepth,kf_ref_depth,curdepth,initV,initV, true);
             else
                 estimateT = inv(trajT(:,size(trajT,2)-7:size(trajT,2)-4)) * trajT(:,size(trajT,2)-3:size(trajT,2));
-                Tc = trajT(:,size(trajT,2)-3:size(trajT,2))*estimateT;
+                Tc = trajT(:,size(trajT,2)-3:size(trajT,2)*estimateT
                 T = estimate_ds_dense_gradient_Joint(cur_left,refgradientx,refgradienty,kf_ref_x, kf_ref_y,curgradientx,curgradienty,refdepth,kf_ref_depth,curdepth,estimateT,Tkf_r,false);
             end
         toc

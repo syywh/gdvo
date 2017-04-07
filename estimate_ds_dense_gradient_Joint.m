@@ -5,23 +5,23 @@ dscale = 1;
 %  pcx = 6.900000e+02; pcy = 2.486443e+02; pfx = 9.799200e+02; pfy =9.741183e+02;                %kitti 00
 pcx = 6.071928000000e+02; pcy =  1.852157000000e+02; pfx =7.188560000000e+02; pfy =7.188560000000e+02;                %kitti 00
 % pcx = 335.963; pcy = 190.625; pfx = 351.498; pfy = 351.498; 
-s0 = 16;
-near = 1;     %保留的点
-far = 80;
+s0 = 8;
+near = 0.5;     %保留的点
+far = 35;
 if(initial)
-    iteration_s = [10 40 10 ];
+    iteration_s = [40 30 ];
 else
-    iteration_s = [10 40 10 5 ];%16 8 4 2
+    iteration_s = [40 30  ];%16 8 4 2
 end
 
 refdepth = dscale*double(refdepth);
 curdepth = dscale*double(curdepth);
 kfdepth = dscale*double(kfdepth);
+% imshow(kfdepth, [0 64]);
 % ref_gra_x = im2double(ref_gra_x);
 % ref_gra_y = im2double(ref_gra_y);
 % cur_gra_x = im2double(cur_gra_x);
 % cur_gra_y = im2double(cur_gra_y);
-weight = 1;
 
 
 %% Process
@@ -60,35 +60,33 @@ for n = 1:length(iteration_s)
     zkf = kfdepthp(:).';
     
     Pref = K\[zref.*uref;zref.*vref;zref];
-    refvalid = Pref(3,:)>near & Pref(3,:)<far & gref>0.8/s;
+    refvalid = Pref(3,:)>near & Pref(3,:)<far & gref>0.02/s;
 
     Pkf = K\[zkf.*ukf;zkf.*vkf;zkf];
-    kfvalid = Pkf(3,:)>near & Pkf(3,:)<far & gkf>0.8/s;
+    kfvalid = Pkf(3,:)>near & Pkf(3,:)<far & gkf>0.02/s;
 
     % jacobian    
     maxiter = iteration_s(n);%每次迭代的次数
     err = zeros(1,maxiter);
-    RK = 4.6851;
+    RK = 2.0*s;
 % RK = 50;
     for m = 1 : maxiter
-        %% for reference image
-        render = zeros(size(curp_gra_x));
+%% for reference image
         Rotate = T(1:3,1:3);
         Translate = T(1:3,4);
         ENewT = Pref - repmat(Translate,1,size(Pref,2));
         ENewRT = Rotate.'*ENewT;
-        uvNew = K*ENewRT;
+        uvNew = K*ENewRT;  %u*z  v*z  z
         uNew = round(uvNew(1,:)./uvNew(3,:))+1;
         vNew = round(uvNew(2,:)./uvNew(3,:))+1;
         uu = uNew;  vv = vNew;  uv = uvNew;
-        idx = (uNew(:)-1)*size(refdepthp,1)+vNew(:);
+        
         valid = uvNew(3,:)>near & uvNew(3,:)<far & uNew <= size(curdepthp,2) & uNew > 0 ...
             & vNew <= size(curdepthp,1) & vNew > 0 & refvalid;
         validvalid = valid;
-%         render(idx(valid)) = refp(valid);
+
         Vsum = 0;
         V = [];    J = [];
-        Vdsum = 0;
         H = zeros(6,6);
         b = zeros(6,1);
         [gdxx,gdxy] = imgradientxy(curp_gra_x);  
@@ -97,8 +95,6 @@ for n = 1:length(iteration_s)
         [refgdyx,refgdyy] = imgradientxy(refp_gra_y);  
         [kfgdxx,kfgdxy] = imgradientxy(kfp_gra_x);  
         [kfgdyx,kfgdyy] = imgradientxy(kfp_gra_y);  
-%         [gdxd,gdyd] = imgradientxy(curdepthp);
-         
 
         for i =1 : size(Pref,2)
             if ~valid(i)
@@ -129,14 +125,21 @@ for n = 1:length(iteration_s)
             firstDiffx = [(gdxxPatch+refgdxxPatch)/2 (gdxyPatch+ refgdxyPatch )/2];
             firstDiffy = [(gdyxPatch+refgdyxPatch)/2 (gdyyPatch+refgdyyPatch)/2];
 %             firstDiffd = [gdxPatchd gdyPatchd];
-%             secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
-%                                   0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+if n < size(iteration_s,2)
+            secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
+                                  0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+else
             secondDiff = [ fx / EiNewRT(3), 0, -(uNew(i)-1) * EiNewRT(3).^(-1);
                                   0, fy / EiNewRT(3), -(vNew(i)-1) * EiNewRT(3).^(-1) ];
+end
+            EiNewRTx = [ 0, -EiNewRT(3), EiNewRT(2);
+                               EiNewRT(3), 0, -EiNewRT(1);
+                               -EiNewRT(2), EiNewRT(1), 0];
             EiNewTx = [ 0, -EiNewT(3), EiNewT(2);
                                EiNewT(3), 0, -EiNewT(1);
                                -EiNewT(2), EiNewT(1), 0];
             thirdDiff = Rotate' * [ -eye(3), EiNewTx];
+%             thirdDiff = [eye(3) EiNewRTx];
             Jix = firstDiffx * secondDiff * thirdDiff;
             Jiy = firstDiffy * secondDiff * thirdDiff;
 
@@ -166,7 +169,7 @@ for n = 1:length(iteration_s)
 %         [gdyx,gdyy] = imgradientxy(curp_gra_y);  
 %         [gdxd,gdyd] = imgradientxy(curdepthp);
          
-
+%         size(V)
         for i =1 : size(Pkf,2)
             if ~valid(i)
                 continue;
@@ -196,14 +199,22 @@ for n = 1:length(iteration_s)
             firstDiffx = [(gdxxPatch+kfgdxxPatch)/2 (gdxyPatch+kfgdxyPatch)/2];
             firstDiffy = [(gdyxPatch+ kfgdyxPatch)/2 (gdyyPatch+kfgdyyPatch)/2];
 %             firstDiffd = [gdxPatchd gdyPatchd];
-%             secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
-%                                   0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+if n < size(iteration_s,2)
+            secondDiff = [ fx / EiNewRT(3), 0, -fx * EiNewRT(1) * EiNewRT(3).^(-2);
+                                  0, fy / EiNewRT(3), -fy * EiNewRT(2) * EiNewRT(3).^(-2) ];
+else
             secondDiff = [ fx / EiNewRT(3), 0, -(uNew(i)-1) * EiNewRT(3).^(-1);
                                   0, fy / EiNewRT(3), -(vNew(i)-1) * EiNewRT(3).^(-1) ];
+end
+                              %%???是否正确？EiNewRT or EiNewT?
+            EiNewRTx = [ 0, -EiNewRT(3), EiNewRT(2);
+                               EiNewRT(3), 0, -EiNewRT(1);
+                               -EiNewRT(2), EiNewRT(1), 0];
             EiNewTx = [ 0, -EiNewT(3), EiNewT(2);
                                EiNewT(3), 0, -EiNewT(1);
                                -EiNewT(2), EiNewT(1), 0];
             thirdDiff = Rotate' * [ -eye(3), EiNewTx];
+%             thirdDiff = [eye(3) EiNewRTx];
             Jix = firstDiffx * secondDiff * thirdDiff;
             Jiy = firstDiffy * secondDiff * thirdDiff;
 
